@@ -4,6 +4,11 @@ let userData = null;
 let currentUser = null;
 let currentChatWith = null;
 
+// API endpoints - ВАЖНО: для продакшена нужен HTTPS URL!
+const API_BASE_URL = window.location.hostname === 'localhost'
+    ? 'http://localhost:5000'
+    : 'https://твой-домен.herokuapp.com'; // Замени на твой продакшен URL
+
 // Предустановленные пользователи
 const PREDEFINED_USERS = {
     "Анна": { id: 1001, username: "student_anna", first_name: "Анна", role: "student" },
@@ -14,8 +19,6 @@ const PREDEFINED_USERS = {
     "Репетитор": { id: 999, username: "tutor_main", first_name: "Репетитор", role: "tutor" }
 };
 
-const CURRENT_YEAR = new Date().getFullYear();
-
 // Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -23,27 +26,109 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function initializeApp() {
     try {
-        // Пытаемся инициализировать Telegram Web App
+        // Проверяем, запущено ли в Telegram
         if (window.Telegram && window.Telegram.WebApp) {
             tg = window.Telegram.WebApp;
+
+            // Инициализируем Telegram Web App
+            tg.ready();
             tg.expand();
-            tg.enableClosingConfirmation();
 
             // Устанавливаем цветовую схему
             tg.setHeaderColor('#667eea');
             tg.setBackgroundColor('#f8f9fa');
 
-            console.log('Telegram Web App инициализирован');
+            // Получаем данные пользователя из Telegram
+            const telegramUser = tg.initDataUnsafe?.user;
+
+            if (telegramUser) {
+                // Пользователь из Telegram
+                await handleTelegramUser(telegramUser);
+            } else {
+                // Демо-режим - показываем выбор пользователя
+                showLoginScreen();
+            }
+
+            console.log('✅ Telegram Web App инициализирован', telegramUser);
+
         } else {
-            console.log('Telegram Web App не обнаружен, работаем в демо-режиме');
+            // Не в Telegram - демо-режим
+            console.log('📱 Не в Telegram, демо-режим');
+            showLoginScreen();
         }
+
+    } catch (error) {
+        console.error('Ошибка инициализации:', error);
+        showLoginScreen();
+    }
+}
+
+// Обработка пользователя из Telegram
+async function handleTelegramUser(telegramUser) {
+    try {
+        // Ищем пользователя в наших данных по username или создаем нового
+        let user = Object.values(PREDEFINED_USERS).find(u =>
+            u.username === telegramUser.username
+        );
+
+        if (!user) {
+            // Создаем нового пользователя на основе данных Telegram
+            user = {
+                id: telegramUser.id,
+                username: telegramUser.username,
+                first_name: telegramUser.first_name,
+                last_name: telegramUser.last_name,
+                role: 'student' // По умолчанию студент
+            };
+
+            // Можно сохранить нового пользователя на сервере
+            await saveTelegramUser(user);
+        }
+
+        // Автоматический вход
+        currentUser = user;
+        userData = currentUser;
+
+        // Скрываем экран входа
+        document.getElementById('loginScreen').classList.remove('active');
+        document.getElementById('appContainer').style.display = 'block';
+
+        // Инициализируем интерфейс
+        initializeUI();
+        await loadInitialData();
+
+        showNotification(`Добро пожаловать, ${user.first_name}!`);
+
+    } catch (error) {
+        console.error('Ошибка обработки пользователя Telegram:', error);
+        showLoginScreen();
+    }
+}
+
+async function saveTelegramUser(user) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/telegram-user`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(user)
+        });
+        return response.ok;
+    } catch (error) {
+        console.error('Ошибка сохранения пользователя:', error);
+        return false;
+    }
+}
+
+// Остальной код app.js остается без изменений...
+// (showLoginScreen, loginAs, logout, и все остальные функции)
 
         // Показываем экран входа
         showLoginScreen();
 
     } catch (error) {
         console.error('Ошибка инициализации:', error);
-        // Все равно показываем экран входа
         showLoginScreen();
     }
 }
@@ -53,7 +138,6 @@ function showLoginScreen() {
     const appContainer = document.getElementById('appContainer');
     const usersList = document.getElementById('usersList');
 
-    // Показываем экран входа, скрываем основное приложение
     loginScreen.classList.add('active');
     appContainer.style.display = 'none';
 
@@ -82,25 +166,19 @@ async function loginAs(userName) {
         return;
     }
 
-    // Устанавливаем текущего пользователя
     currentUser = user;
     userData = currentUser;
 
-    // Скрываем экран входа, показываем основное приложение
     document.getElementById('loginScreen').classList.remove('active');
     document.getElementById('appContainer').style.display = 'block';
 
-    // Инициализируем интерфейс
     initializeUI();
-
-    // Загружаем начальные данные
     await loadInitialData();
 
     showNotification(`Добро пожаловать, ${userName}!`);
 }
 
 function logout() {
-    // Показываем подтверждение выхода
     if (confirm('Вы уверены, что хотите выйти?')) {
         currentUser = null;
         userData = null;
@@ -111,17 +189,11 @@ function logout() {
 }
 
 function initializeUI() {
-    // Устанавливаем имя пользователя
     document.getElementById('userName').textContent = userData.first_name;
     document.getElementById('welcomeName').textContent = userData.first_name;
 
-    // Настраиваем обработчики навигации
     setupNavigation();
-
-    // Настраиваем обработчики событий
     setupEventListeners();
-
-    // Настраиваем интерфейс в зависимости от роли
     setupRoleBasedUI();
 }
 
@@ -129,7 +201,6 @@ function setupRoleBasedUI() {
     const actionsGrid = document.getElementById('actionsGrid');
 
     if (userData.role === 'tutor') {
-        // Кнопки для репетитора
         actionsGrid.innerHTML = `
             <button class="action-btn" onclick="openTab('progress')">
                 <span class="action-icon">📊</span>
@@ -149,7 +220,6 @@ function setupRoleBasedUI() {
             </button>
         `;
     } else {
-        // Кнопки для ученика
         actionsGrid.innerHTML = `
             <button class="action-btn" onclick="openTab('chat')">
                 <span class="action-icon">💬</span>
@@ -176,12 +246,9 @@ function setupNavigation() {
 
     navButtons.forEach(button => {
         button.addEventListener('click', function() {
-            // Убираем активный класс у всех кнопок
             navButtons.forEach(btn => btn.classList.remove('active'));
-            // Добавляем активный класс текущей кнопке
             this.classList.add('active');
 
-            // Показываем соответствующий раздел
             const tabName = this.getAttribute('data-tab');
             openTab(tabName);
         });
@@ -189,7 +256,6 @@ function setupNavigation() {
 }
 
 function setupEventListeners() {
-    // Отправка сообщения по Enter
     const messageInput = document.getElementById('messageInput');
     if (messageInput) {
         messageInput.addEventListener('keypress', function(e) {
@@ -201,16 +267,12 @@ function setupEventListeners() {
 }
 
 function openTab(tabName) {
-    // Скрываем все разделы
     const tabContents = document.querySelectorAll('.tab-content');
     tabContents.forEach(tab => tab.classList.remove('active'));
 
-    // Показываем выбранный раздел
     const activeTab = document.getElementById(tabName);
     if (activeTab) {
         activeTab.classList.add('active');
-
-        // Загружаем данные для раздела при открытии
         loadTabData(tabName);
     }
 }
@@ -236,7 +298,6 @@ async function loadTabData(tabName) {
 }
 
 async function loadInitialData() {
-    // Загружаем данные для активного раздела
     const activeTab = document.querySelector('.tab-content.active');
     if (activeTab) {
         await loadTabData(activeTab.id);
@@ -245,20 +306,16 @@ async function loadInitialData() {
 
 // 📊 ДАШБОРД
 async function loadDashboardData() {
-    // Обновляем статистику
     updateDashboardStats();
 }
 
 function updateDashboardStats() {
-    // Прогресс
     const progress = userData.progress ? userData.progress.value : 0;
     document.getElementById('currentProgress').textContent = `${progress}%`;
 
-    // Количество заданий
     const homeworkCount = userData.role === 'tutor' ? 5 : 3;
     document.getElementById('homeworkCount').textContent = homeworkCount;
 
-    // Ближайшее занятие
     const nextLesson = userData.role === 'tutor' ? 'Сегодня 15:00' : 'Завтра 14:00';
     document.getElementById('nextLesson').textContent = nextLesson;
 }
@@ -273,18 +330,26 @@ async function loadProgressData() {
 }
 
 async function loadStudentProgress() {
-    const progress = userData.progress || { value: 0, comment: 'Прогресс не оценен' };
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/progress/${userData.id}`);
+        if (response.ok) {
+            const progress = await response.json();
+            updateProgressUI(progress);
+        } else {
+            updateProgressUI({ progress: 0, comment: 'Прогресс не оценен' });
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки прогресса:', error);
+        updateProgressUI({ progress: 0, comment: 'Ошибка загрузки прогресса' });
+    }
+}
 
-    // Обновляем круг прогресса
-    updateProgressCircle(progress.value);
+function updateProgressUI(progress) {
+    updateProgressCircle(progress.progress);
 
-    // Обновляем информацию
-    document.getElementById('progressValue').textContent = `${progress.value} из 100 баллов`;
+    document.getElementById('progressValue').textContent = `${progress.progress} из 100 баллов`;
     document.getElementById('progressComment').textContent = progress.comment;
-    document.getElementById('progressPercent').textContent = progress.value;
-
-    // Показываем историю прогресса
-    await loadProgressHistory();
+    document.getElementById('progressPercent').textContent = progress.progress;
 }
 
 function updateProgressCircle(progress) {
@@ -296,63 +361,49 @@ function updateProgressCircle(progress) {
     }
 }
 
-async function loadProgressHistory() {
-    const historyContainer = document.getElementById('progressHistory');
-    if (!historyContainer) return;
-
-    // Mock история прогресса с актуальными датами
-    const history = [
-        { date: '15.01.' + CURRENT_YEAR, value: 85, comment: 'Отличные успехи!' },
-        { date: '08.01.' + CURRENT_YEAR, value: 78, comment: 'Хороший прогресс' },
-        { date: '25.12.' + (CURRENT_YEAR-1), value: 70, comment: 'Стабильные результаты' }
-    ];
-
-    if (history.length === 0) {
-        historyContainer.innerHTML = '<p class="no-data">История прогресса отсутствует</p>';
-        return;
-    }
-
-    historyContainer.innerHTML = history.map(item => `
-        <div class="history-item">
-            <div class="history-date">${item.date}</div>
-            <div class="history-value">${item.value} баллов</div>
-            <div class="history-comment">${item.comment}</div>
-        </div>
-    `).join('');
-}
-
 async function loadTutorProgress() {
     const progressContainer = document.querySelector('.progress-container');
     if (!progressContainer) return;
 
-    // Список учеников для репетитора
-    const students = [
-        { id: 1001, name: 'Анна', progress: 85, comment: 'Отличные успехи' },
-        { id: 1002, name: 'Михаил', progress: 70, comment: 'Хорошо, но можно лучше' },
-        { id: 1003, name: 'Екатерина', progress: 90, comment: 'Превосходно!' },
-        { id: 1004, name: 'Дмитрий', progress: 65, comment: 'Нужно больше практики' },
-        { id: 1005, name: 'София', progress: 0, comment: 'Не оценен' }
-    ];
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/students`);
+        if (response.ok) {
+            const students = await response.json();
+            displayStudentsProgress(students);
+        } else {
+            progressContainer.innerHTML = '<p class="no-data">Ошибка загрузки данных учеников</p>';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки учеников:', error);
+        progressContainer.innerHTML = '<p class="no-data">Ошибка загрузки данных</p>';
+    }
+}
+
+function displayStudentsProgress(students) {
+    const progressContainer = document.querySelector('.progress-container');
 
     progressContainer.innerHTML = `
         <div class="students-progress">
             <h3>Прогресс учеников</h3>
             <div class="students-list">
-                ${students.map(student => `
-                    <div class="student-progress-item">
-                        <div class="student-info">
-                            <span class="student-name">${student.name}</span>
-                            <span class="student-progress">${student.progress}%</span>
+                ${students.map(student => {
+                    const progress = student.progress || { progress: 0, comment: 'Не оценен' };
+                    return `
+                        <div class="student-progress-item">
+                            <div class="student-info">
+                                <span class="student-name">${student.first_name}</span>
+                                <span class="student-progress">${progress.progress}%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${progress.progress}%"></div>
+                            </div>
+                            <div class="student-comment">${progress.comment}</div>
+                            <button class="btn-small" onclick="showUpdateProgressModal(${student.chat_id}, '${student.first_name}')">
+                                Оценить
+                            </button>
                         </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${student.progress}%"></div>
-                        </div>
-                        <div class="student-comment">${student.comment}</div>
-                        <button class="btn-small" onclick="showUpdateProgressModal(${student.id}, '${student.name}')">
-                            Оценить
-                        </button>
-                    </div>
-                `).join('')}
+                    `;
+                }).join('')}
             </div>
         </div>
     `;
@@ -386,7 +437,6 @@ function showUpdateProgressModal(studentId, studentName) {
 
     document.body.appendChild(modal);
 
-    // Закрытие по клику вне модального окна
     modal.addEventListener('click', function(e) {
         if (e.target === modal) {
             modal.remove();
@@ -394,7 +444,7 @@ function showUpdateProgressModal(studentId, studentName) {
     });
 }
 
-function updateStudentProgress(studentId) {
+async function updateStudentProgress(studentId) {
     const progressInput = document.getElementById('progressInput');
     const commentInput = document.getElementById('progressComment');
 
@@ -406,14 +456,30 @@ function updateStudentProgress(studentId) {
         return;
     }
 
-    // Здесь должен быть запрос к API для сохранения прогресса
-    showNotification(`Прогресс ученика #${studentId} обновлен до ${progress}%`);
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/progress`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                student_id: studentId,
+                progress: progress,
+                comment: comment
+            })
+        });
 
-    // Закрываем модальное окно
-    document.querySelector('.modal').remove();
-
-    // Перезагружаем данные прогресса
-    loadProgressData();
+        if (response.ok) {
+            showNotification(`Прогресс ученика обновлен до ${progress}%`);
+            document.querySelector('.modal').remove();
+            loadProgressData();
+        } else {
+            showNotification('Ошибка сохранения прогресса');
+        }
+    } catch (error) {
+        console.error('Ошибка обновления прогресса:', error);
+        showNotification('Ошибка сохранения прогресса');
+    }
 }
 
 // 📚 ДОМАШНИЕ ЗАДАНИЯ
@@ -429,30 +495,22 @@ async function loadStudentHomework() {
     const homeworkList = document.getElementById('homeworkList');
     if (!homeworkList) return;
 
-    // Mock задания для ученика с актуальными датами
-    const homework = [
-        {
-            id: 1,
-            title: 'Повторение тем 1-3',
-            description: 'Решите задачи из учебника страницы 45-48',
-            deadline: '18.01.' + CURRENT_YEAR,
-            completed: false
-        },
-        {
-            id: 2,
-            title: 'Индивидуальное задание',
-            description: 'Особые упражнения для углубленного изучения',
-            deadline: '20.01.' + CURRENT_YEAR,
-            completed: true
-        },
-        {
-            id: 3,
-            title: 'Подготовка к тесту',
-            description: 'Повторите все пройденные темы',
-            deadline: '22.01.' + CURRENT_YEAR,
-            completed: false
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/homework/student/${userData.id}`);
+        if (response.ok) {
+            const homework = await response.json();
+            displayStudentHomework(homework);
+        } else {
+            homeworkList.innerHTML = '<div class="no-data">Ошибка загрузки заданий</div>';
         }
-    ];
+    } catch (error) {
+        console.error('Ошибка загрузки заданий:', error);
+        homeworkList.innerHTML = '<div class="no-data">Ошибка загрузки заданий</div>';
+    }
+}
+
+function displayStudentHomework(homework) {
+    const homeworkList = document.getElementById('homeworkList');
 
     if (homework.length === 0) {
         homeworkList.innerHTML = '<div class="no-data">Нет активных заданий</div>';
@@ -464,7 +522,7 @@ async function loadStudentHomework() {
             <div class="homework-title">${item.title}</div>
             <div class="homework-description">${item.description}</div>
             <div class="homework-meta">
-                <span>📅 ${item.deadline}</span>
+                <span>📅 ${formatDate(new Date(item.deadline))}</span>
                 <span>${item.completed ? '✅ Выполнено' : '⏳ В процессе'}</span>
             </div>
             ${!item.completed ? `
@@ -480,6 +538,23 @@ async function loadTutorHomework() {
     const homeworkList = document.getElementById('homeworkList');
     if (!homeworkList) return;
 
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/homework/tutor/${userData.id}`);
+        if (response.ok) {
+            const homeworkData = await response.json();
+            displayTutorHomework(homeworkData);
+        } else {
+            homeworkList.innerHTML = '<div class="no-data">Ошибка загрузки заданий</div>';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки заданий:', error);
+        homeworkList.innerHTML = '<div class="no-data">Ошибка загрузки заданий</div>';
+    }
+}
+
+function displayTutorHomework(homeworkData) {
+    const homeworkList = document.getElementById('homeworkList');
+
     homeworkList.innerHTML = `
         <div class="tutor-homework-actions">
             <button class="btn-primary" onclick="showAddHomeworkModal()">
@@ -490,15 +565,15 @@ async function loadTutorHomework() {
                 <h4>Статистика заданий</h4>
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-value">5</div>
+                        <div class="stat-value">${homeworkData.total || 0}</div>
                         <div class="stat-label">Всего заданий</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value">3</div>
+                        <div class="stat-value">${homeworkData.completed || 0}</div>
                         <div class="stat-label">Выполнено</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value">2</div>
+                        <div class="stat-value">${homeworkData.pending || 0}</div>
                         <div class="stat-label">В процессе</div>
                     </div>
                 </div>
@@ -506,27 +581,18 @@ async function loadTutorHomework() {
 
             <div class="recent-homework">
                 <h4>Последние задания</h4>
-                <div class="homework-item">
-                    <div class="homework-title">Повторение тем 1-3</div>
-                    <div class="homework-meta">
-                        <span>📅 Срок: 18.01.${CURRENT_YEAR}</span>
-                        <span>👥 Для всех</span>
-                    </div>
-                    <div class="completion-stats">
-                        ✅ 3/5 учеников выполнили
-                    </div>
-                </div>
-
-                <div class="homework-item">
-                    <div class="homework-title">Индивидуальное задание</div>
-                    <div class="homework-meta">
-                        <span>📅 Срок: 20.01.${CURRENT_YEAR}</span>
-                        <span>👤 Для Анны</span>
-                    </div>
-                    <div class="completion-stats">
-                        ✅ Выполнено
-                    </div>
-                </div>
+                ${homeworkData.recent && homeworkData.recent.length > 0 ?
+                    homeworkData.recent.map(item => `
+                        <div class="homework-item">
+                            <div class="homework-title">${item.title}</div>
+                            <div class="homework-meta">
+                                <span>📅 Срок: ${formatDate(new Date(item.deadline))}</span>
+                                <span>👥 ${item.student_id ? 'Индивидуальное' : 'Для всех'}</span>
+                            </div>
+                        </div>
+                    `).join('') :
+                    '<div class="no-data">Нет заданий</div>'
+                }
             </div>
         </div>
     `;
@@ -576,12 +642,11 @@ function showAddHomeworkModal() {
 
     document.body.appendChild(modal);
 
-    // Устанавливаем минимальную дату - сегодня
     const deadlineInput = document.getElementById('homeworkDeadline');
     const today = new Date().toISOString().split('T')[0];
     deadlineInput.min = today;
+    deadlineInput.value = today;
 
-    // Закрытие по клику вне модального окна
     modal.addEventListener('click', function(e) {
         if (e.target === modal) {
             modal.remove();
@@ -589,30 +654,239 @@ function showAddHomeworkModal() {
     });
 }
 
-function addNewHomework() {
+async function addNewHomework() {
     const title = document.getElementById('homeworkTitle').value;
     const description = document.getElementById('homeworkDescription').value;
     const student = document.getElementById('homeworkStudent').value;
     const deadline = document.getElementById('homeworkDeadline').value;
 
-    if (!title || !description || !deadline) {
-        showNotification('Заполните все поля');
+    if (!title) {
+        showNotification('Введите название задания');
         return;
     }
 
-    // Здесь должен быть запрос к API для добавления задания
-    showNotification('Новое задание добавлено!');
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/homework`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                tutor_id: userData.id,
+                student_id: student === 'all' ? null : parseInt(student),
+                title: title,
+                description: description,
+                deadline: deadline
+            })
+        });
 
-    // Закрываем модальное окно
-    document.querySelector('.modal').remove();
-
-    // Перезагружаем данные заданий
-    loadHomeworkData();
+        if (response.ok) {
+            showNotification('Новое задание добавлено!');
+            document.querySelector('.modal').remove();
+            loadHomeworkData();
+        } else {
+            showNotification('Ошибка добавления задания');
+        }
+    } catch (error) {
+        console.error('Ошибка добавления задания:', error);
+        showNotification('Ошибка добавления задания');
+    }
 }
 
-function markHomeworkCompleted(homeworkId) {
-    showNotification(`Задание #${homeworkId} отмечено выполненным!`);
-    // В реальном приложении здесь был бы запрос к API
+async function markHomeworkCompleted(homeworkId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/homework/${homeworkId}/complete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                student_id: userData.id
+            })
+        });
+
+        if (response.ok) {
+            showNotification('Задание отмечено выполненным!');
+            loadHomeworkData();
+        } else {
+            showNotification('Ошибка отметки задания');
+        }
+    } catch (error) {
+        console.error('Ошибка отметки задания:', error);
+        showNotification('Ошибка отметки задания');
+    }
+}
+
+// 💬 ЧАТ
+async function loadChatData() {
+    if (userData.role === 'tutor') {
+        await loadTutorChat();
+    } else {
+        await loadStudentChat();
+    }
+}
+
+async function loadStudentChat() {
+    // Ученик всегда общается с репетитором
+    currentChatWith = 999;
+
+    const chatHeader = document.querySelector('.chat-header h2');
+    if (chatHeader) {
+        chatHeader.textContent = '💬 Чат с репетитором';
+    }
+
+    await loadMessages();
+
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.focus();
+    }
+}
+
+async function loadTutorChat() {
+    const chatHeader = document.querySelector('.chat-header h2');
+    const messagesContainer = document.getElementById('messagesContainer');
+    const chatInputContainer = document.querySelector('.chat-input-container');
+
+    if (chatHeader) {
+        chatHeader.textContent = '💬 Чат с учениками';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/students`);
+        if (response.ok) {
+            const students = await response.json();
+            displayStudentsChatList(students);
+        } else {
+            messagesContainer.innerHTML = '<div class="no-data">Ошибка загрузки списка учеников</div>';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки учеников:', error);
+        messagesContainer.innerHTML = '<div class="no-data">Ошибка загрузки списка учеников</div>';
+    }
+
+    if (chatInputContainer) {
+        chatInputContainer.style.display = 'none';
+    }
+}
+
+function displayStudentsChatList(students) {
+    const messagesContainer = document.getElementById('messagesContainer');
+
+    messagesContainer.innerHTML = `
+        <div class="students-chat-list">
+            <h3>Выберите ученика для общения</h3>
+            <div class="students-grid">
+                ${students.map(student => {
+                    return `
+                        <div class="student-chat-item" onclick="selectStudentForChat(${student.chat_id}, '${student.first_name}')">
+                            <div class="student-avatar">👤</div>
+                            <div class="student-info">
+                                <div class="student-name">${student.first_name}</div>
+                                <div class="last-message">${student.last_message || 'Нет сообщений'}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function selectStudentForChat(studentId, studentName) {
+    currentChatWith = studentId;
+
+    const chatHeader = document.querySelector('.chat-header h2');
+    const chatInputContainer = document.querySelector('.chat-input-container');
+
+    if (chatHeader) {
+        chatHeader.textContent = `💬 Чат с ${studentName}`;
+    }
+
+    if (chatInputContainer) {
+        chatInputContainer.style.display = 'flex';
+    }
+
+    loadMessages();
+
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.focus();
+    }
+}
+
+async function loadMessages() {
+    const messagesContainer = document.getElementById('messagesContainer');
+    if (!messagesContainer || !currentChatWith) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/messages/${userData.id}/${currentChatWith}`);
+        if (response.ok) {
+            const messages = await response.json();
+            displayMessages(messages);
+        } else {
+            messagesContainer.innerHTML = '<div class="no-data">Ошибка загрузки сообщений</div>';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки сообщений:', error);
+        messagesContainer.innerHTML = '<div class="no-data">Ошибка загрузки сообщений</div>';
+    }
+}
+
+function displayMessages(messages) {
+    const messagesContainer = document.getElementById('messagesContainer');
+
+    if (messages.length === 0) {
+        messagesContainer.innerHTML = '<div class="no-data">Нет сообщений. Начните общение!</div>';
+        return;
+    }
+
+    messagesContainer.innerHTML = messages.map(message => {
+        const messageDate = new Date(message.timestamp);
+        const isOwn = message.sender_id === userData.id;
+
+        return `
+            <div class="message ${isOwn ? 'sent' : 'received'}">
+                <div class="message-text">${message.text}</div>
+                <div class="message-time">${formatTime(messageDate)}</div>
+            </div>
+        `;
+    }).join('');
+
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+async function sendMessage() {
+    const messageInput = document.getElementById('messageInput');
+    const messageText = messageInput.value.trim();
+
+    if (!messageText || !currentChatWith) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/messages`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                sender_id: userData.id,
+                receiver_id: currentChatWith,
+                text: messageText
+            })
+        });
+
+        if (response.ok) {
+            messageInput.value = '';
+            await loadMessages();
+        } else {
+            showNotification('Ошибка отправки сообщения');
+        }
+    } catch (error) {
+        console.error('Ошибка отправки сообщения:', error);
+        showNotification('Ошибка отправки сообщения');
+    }
 }
 
 // 📅 РАСПИСАНИЕ
@@ -625,79 +899,69 @@ async function loadScheduleData() {
 }
 
 async function loadStudentSchedule() {
-    const nextLessonCard = document.getElementById('nextLessonCard');
     const scheduleList = document.getElementById('scheduleList');
 
-    // Mock расписание с актуальными датами
-    const schedule = [
-        {
-            id: 1,
-            date: CURRENT_YEAR + '-01-16T14:00:00',
-            duration: 60,
-            topic: 'Разбор домашнего задания',
-            student: userData.first_name
-        },
-        {
-            id: 2,
-            date: CURRENT_YEAR + '-01-18T16:00:00',
-            duration: 90,
-            topic: 'Новая тема: Производные',
-            student: userData.first_name
-        },
-        {
-            id: 3,
-            date: CURRENT_YEAR + '-01-20T15:00:00',
-            duration: 60,
-            topic: 'Подготовка к тесту',
-            student: userData.first_name
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/schedule/student/${userData.id}`);
+        if (response.ok) {
+            const schedule = await response.json();
+            displayStudentSchedule(schedule);
+        } else {
+            scheduleList.innerHTML = '<div class="no-data">Нет запланированных занятий</div>';
         }
-    ];
+    } catch (error) {
+        console.error('Ошибка загрузки расписания:', error);
+        scheduleList.innerHTML = '<div class="no-data">Ошибка загрузки расписания</div>';
+    }
+}
 
-    // Ближайшее занятие
-    const nextClass = schedule[0];
-    if (nextClass && nextLessonCard) {
-        const classDate = new Date(nextClass.date);
-        nextLessonCard.innerHTML = `
-            <div class="next-lesson">
-                <h3>🎯 Ближайшее занятие</h3>
-                <div class="lesson-time">
-                    <span class="date">${formatDate(classDate)}</span>
-                    <span class="time">${formatTime(classDate)}</span>
+function displayStudentSchedule(schedule) {
+    const scheduleList = document.getElementById('scheduleList');
+
+    if (schedule.length === 0) {
+        scheduleList.innerHTML = '<div class="no-data">Нет запланированных занятий</div>';
+        return;
+    }
+
+    scheduleList.innerHTML = schedule.map(item => {
+        const itemDate = new Date(item.start_time);
+        const duration = Math.round((new Date(item.end_time) - itemDate) / 60000);
+
+        return `
+            <div class="schedule-item">
+                <div class="schedule-date">
+                    <span class="day">${formatDate(itemDate)}</span>
+                    <span class="time">${formatTime(itemDate)}</span>
                 </div>
-                <div class="lesson-topic">${nextClass.topic}</div>
-                <div class="lesson-duration">⏱ ${nextClass.duration} минут</div>
+                <div class="schedule-topic">${item.topic}</div>
+                <div class="schedule-meta">
+                    <span>⏱ ${duration} мин</span>
+                </div>
             </div>
         `;
-    }
-
-    // Список занятий
-    if (scheduleList) {
-        if (schedule.length === 0) {
-            scheduleList.innerHTML = '<div class="no-data">Нет запланированных занятий</div>';
-            return;
-        }
-
-        scheduleList.innerHTML = schedule.map(item => {
-            const itemDate = new Date(item.date);
-            return `
-                <div class="schedule-item">
-                    <div class="schedule-date">
-                        <span class="day">${formatDate(itemDate)}</span>
-                        <span class="time">${formatTime(itemDate)}</span>
-                    </div>
-                    <div class="schedule-topic">${item.topic}</div>
-                    <div class="schedule-meta">
-                        <span>⏱ ${item.duration} мин</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
+    }).join('');
 }
 
 async function loadTutorSchedule() {
     const scheduleContainer = document.querySelector('.schedule-container');
     if (!scheduleContainer) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/schedule/tutor/${userData.id}`);
+        if (response.ok) {
+            const schedule = await response.json();
+            displayTutorSchedule(schedule);
+        } else {
+            scheduleContainer.innerHTML = '<div class="no-data">Ошибка загрузки расписания</div>';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки расписания:', error);
+        scheduleContainer.innerHTML = '<div class="no-data">Ошибка загрузки расписания</div>';
+    }
+}
+
+function displayTutorSchedule(schedule) {
+    const scheduleContainer = document.querySelector('.schedule-container');
 
     scheduleContainer.innerHTML = `
         <div class="tutor-schedule">
@@ -708,43 +972,27 @@ async function loadTutorSchedule() {
             </div>
 
             <div class="schedule-overview">
-                <h4>Расписание на неделю</h4>
+                <h4>Ближайшие занятия</h4>
+                ${schedule.length > 0 ?
+                    schedule.map(item => {
+                        const itemDate = new Date(item.start_time);
+                        const duration = Math.round((new Date(item.end_time) - itemDate) / 60000);
 
-                <div class="schedule-item">
-                    <div class="schedule-date">
-                        <span class="day">Завтра</span>
-                        <span class="time">14:00-15:00</span>
-                    </div>
-                    <div class="schedule-topic">Занятие с Анной</div>
-                    <div class="schedule-meta">
-                        <span>👤 Анна</span>
-                        <span>📚 Разбор ДЗ</span>
-                    </div>
-                </div>
-
-                <div class="schedule-item">
-                    <div class="schedule-date">
-                        <span class="day">Завтра</span>
-                        <span class="time">16:00-17:30</span>
-                    </div>
-                    <div class="schedule-topic">Занятие с Михаилом</div>
-                    <div class="schedule-meta">
-                        <span>👤 Михаил</span>
-                        <span>📚 Новая тема</span>
-                    </div>
-                </div>
-
-                <div class="schedule-item">
-                    <div class="schedule-date">
-                        <span class="day">18.01</span>
-                        <span class="time">15:00-16:00</span>
-                    </div>
-                    <div class="schedule-topic">Групповое занятие</div>
-                    <div class="schedule-meta">
-                        <span>👥 Все ученики</span>
-                        <span>📚 Подготовка к тесту</span>
-                    </div>
-                </div>
+                        return `
+                            <div class="schedule-item">
+                                <div class="schedule-date">
+                                    <span class="day">${formatDate(itemDate)}</span>
+                                    <span class="time">${formatTime(itemDate)}</span>
+                                </div>
+                                <div class="schedule-topic">${item.topic}</div>
+                                <div class="schedule-meta">
+                                    <span>⏱ ${duration} мин</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('') :
+                    '<div class="no-data">Нет запланированных занятий</div>'
+                }
             </div>
         </div>
     `;
@@ -793,13 +1041,11 @@ function showAddScheduleModal() {
 
     document.body.appendChild(modal);
 
-    // Устанавливаем минимальную дату - сейчас
     const datetimeInput = document.getElementById('scheduleDateTime');
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     datetimeInput.min = now.toISOString().slice(0, 16);
 
-    // Закрытие по клику вне модального окна
     modal.addEventListener('click', function(e) {
         if (e.target === modal) {
             modal.remove();
@@ -807,7 +1053,7 @@ function showAddScheduleModal() {
     });
 }
 
-function addNewSchedule() {
+async function addNewSchedule() {
     const student = document.getElementById('scheduleStudent').value;
     const datetime = document.getElementById('scheduleDateTime').value;
     const duration = document.getElementById('scheduleDuration').value;
@@ -818,271 +1064,38 @@ function addNewSchedule() {
         return;
     }
 
-    // Здесь должен быть запрос к API для добавления занятия
-    showNotification('Новое занятие добавлено в расписание!');
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/schedule`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                tutor_id: userData.id,
+                student_id: parseInt(student),
+                start_time: datetime,
+                duration: parseInt(duration),
+                topic: topic
+            })
+        });
 
-    // Закрываем модальное окно
-    document.querySelector('.modal').remove();
-
-    // Перезагружаем данные расписания
-    loadScheduleData();
-}
-
-// 💬 ЧАТ
-async function loadChatData() {
-    if (userData.role === 'tutor') {
-        await loadTutorChat();
-    } else {
-        await loadStudentChat();
-    }
-}
-
-async function loadStudentChat() {
-    // Ученик всегда общается с репетитором
-    currentChatWith = 999;
-
-    const chatHeader = document.querySelector('.chat-header h2');
-    if (chatHeader) {
-        chatHeader.textContent = '💬 Чат с репетитором';
-    }
-
-    await loadMessages();
-
-    // Автофокус на поле ввода
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-        messageInput.focus();
-    }
-}
-
-async function loadTutorChat() {
-    const chatHeader = document.querySelector('.chat-header h2');
-    const messagesContainer = document.getElementById('messagesContainer');
-    const chatInputContainer = document.querySelector('.chat-input-container');
-
-    if (chatHeader) {
-        chatHeader.textContent = '💬 Чат с учениками';
-    }
-
-    // Для репетитора показываем список учеников
-    messagesContainer.innerHTML = `
-        <div class="students-chat-list">
-            <h3>Выберите ученика для общения:</h3>
-            <div class="chat-students">
-                <div class="chat-student-item" onclick="selectStudent(1001, 'Анна')">
-                    <div class="student-avatar">👩</div>
-                    <div class="student-info">
-                        <div class="student-name">Анна</div>
-                        <div class="last-message">Последнее сообщение: сегодня</div>
-                    </div>
-                    <div class="unread-badge">3</div>
-                </div>
-                <div class="chat-student-item" onclick="selectStudent(1002, 'Михаил')">
-                    <div class="student-avatar">👨</div>
-                    <div class="student-info">
-                        <div class="student-name">Михаил</div>
-                        <div class="last-message">Нет сообщений</div>
-                    </div>
-                </div>
-                <div class="chat-student-item" onclick="selectStudent(1003, 'Екатерина')">
-                    <div class="student-avatar">👩</div>
-                    <div class="student-info">
-                        <div class="student-name">Екатерина</div>
-                        <div class="last-message">Вопрос по заданию</div>
-                    </div>
-                    <div class="unread-badge">1</div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Скрываем поле ввода пока не выбран ученик
-    if (chatInputContainer) {
-        chatInputContainer.style.display = 'none';
-    }
-}
-
-function selectStudent(studentId, studentName) {
-    currentChatWith = studentId;
-
-    const chatHeader = document.querySelector('.chat-header h2');
-    const chatInputContainer = document.querySelector('.chat-input-container');
-
-    if (chatHeader) {
-        chatHeader.textContent = `💬 Чат с ${studentName}`;
-    }
-
-    // Показываем поле ввода
-    if (chatInputContainer) {
-        chatInputContainer.style.display = 'flex';
-    }
-
-    // Загружаем сообщения с выбранным учеником
-    loadMessages();
-
-    // Автофокус на поле ввода
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-        messageInput.focus();
-    }
-}
-
-async function loadMessages() {
-    const messagesContainer = document.getElementById('messagesContainer');
-    if (!messagesContainer || !currentChatWith) return;
-
-    // Mock сообщения
-    const messages = [
-        {
-            id: 1,
-            sender_id: userData.role === 'student' ? 1001 : 999,
-            receiver_id: userData.role === 'student' ? 999 : 1001,
-            text: 'Здравствуйте! У меня вопрос по домашнему заданию...',
-            created_at: new Date(Date.now() - 3600000).toISOString()
-        },
-        {
-            id: 2,
-            sender_id: userData.role === 'student' ? 999 : 1001,
-            receiver_id: userData.role === 'student' ? 1001 : 999,
-            text: 'Конечно! Какой именно вопрос?',
-            created_at: new Date(Date.now() - 1800000).toISOString()
-        },
-        {
-            id: 3,
-            sender_id: userData.role === 'student' ? 1001 : 999,
-            receiver_id: userData.role === 'student' ? 999 : 1001,
-            text: 'Не понимаю задание №3. Можете объяснить?',
-            created_at: new Date(Date.now() - 600000).toISOString()
+        if (response.ok) {
+            showNotification('Новое занятие добавлено в расписание!');
+            document.querySelector('.modal').remove();
+            loadScheduleData();
+        } else {
+            showNotification('Ошибка добавления занятия');
         }
-    ];
-
-    if (messages.length === 0) {
-        messagesContainer.innerHTML = `
-            <div class="empty-chat">
-                <div class="empty-icon">💬</div>
-                <h3>Нет сообщений</h3>
-                <p>Начните общение!</p>
-            </div>
-        `;
-        return;
-    }
-
-    messagesContainer.innerHTML = messages.map(message => {
-        const isSent = message.sender_id === userData.id;
-        const time = new Date(message.created_at).toLocaleTimeString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
-        return `
-            <div class="message ${isSent ? 'sent' : 'received'}">
-                <div class="message-text">${escapeHtml(message.text)}</div>
-                <div class="message-time">${time}</div>
-            </div>
-        `;
-    }).join('');
-
-    // Прокрутка вниз
-    scrollToBottom();
-}
-
-function sendMessage() {
-    if (!currentChatWith) {
-        showNotification('Выберите ученика для общения');
-        return;
-    }
-
-    const input = document.getElementById('messageInput');
-    const text = input.value.trim();
-
-    if (!text) return;
-
-    const messagesContainer = document.getElementById('messagesContainer');
-    if (!messagesContainer) return;
-
-    // Создаем новое сообщение
-    const newMessage = {
-        id: Date.now(),
-        sender_id: userData.id,
-        receiver_id: currentChatWith,
-        text: text,
-        created_at: new Date().toISOString()
-    };
-
-    // Добавляем сообщение в чат
-    const messageElement = document.createElement('div');
-    messageElement.className = 'message sent';
-    messageElement.innerHTML = `
-        <div class="message-text">${escapeHtml(text)}</div>
-        <div class="message-time">${new Date().toLocaleTimeString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit'
-        })}</div>
-    `;
-
-    messagesContainer.appendChild(messageElement);
-
-    // Очищаем поле ввода
-    input.value = '';
-
-    // Прокрутка вниз
-    scrollToBottom();
-
-    // Показываем уведомление
-    showNotification('Сообщение отправлено!');
-
-    // В реальном приложении здесь был бы запрос к API для сохранения сообщения
-    // saveMessageToServer(newMessage);
-}
-
-// 🛠️ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-function scrollToBottom() {
-    const messagesContainer = document.getElementById('messagesContainer');
-    if (messagesContainer) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    } catch (error) {
+        console.error('Ошибка добавления занятия:', error);
+        showNotification('Ошибка добавления занятия');
     }
 }
 
-function showNotification(text) {
-    if (tg && tg.showPopup) {
-        tg.showPopup({
-            title: 'Уведомление',
-            message: text,
-            buttons: [{ type: 'ok' }]
-        });
-    } else {
-        alert(text);
-    }
-}
-
-function showError(message) {
-    const appContainer = document.querySelector('.app-container');
-    if (appContainer) {
-        appContainer.innerHTML = `
-            <div class="error-screen">
-                <div class="error-icon">⚠️</div>
-                <h2>Ошибка</h2>
-                <p>${message}</p>
-                <button class="btn-primary" onclick="location.reload()">
-                    Перезагрузить
-                </button>
-            </div>
-        `;
-    }
-}
-
-function changePhoto() {
-    const modal = document.getElementById('photoModal');
-    if (modal) {
-        modal.style.display = 'flex';
-    }
-}
-
-function closeModal() {
-    const modal = document.getElementById('photoModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+// 📋 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+function showNotification(message) {
+    // Простое уведомление
+    alert(message);
 }
 
 function formatDate(date) {
@@ -1100,16 +1113,16 @@ function formatTime(date) {
     });
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+function changePhoto() {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h3>🖼️ Смена фото профиля</h3>
+            <p>Для смены фото отправьте его боту в Telegram</p>
+            <button onclick="this.closest('.modal').remove()" class="btn-primary">Понятно</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
 }
-
-// Закрытие модального окна при клике вне его
-window.addEventListener('click', function(event) {
-    const modal = document.getElementById('photoModal');
-    if (event.target === modal) {
-        closeModal();
-    }
-});
