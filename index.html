@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Образовательная платформа</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Экран входа -->
+    <div id="loginScreen" class="login-screen active">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>🎓 EduPlatform</h1>
+                <p>Образовательная платформа</p>
+            </div>
+
+            <div class="login-form">
+                <h2>Вход в систему</h2>
+                <p>Выберите ваше имя из списка:</p>
+
+                <div class="users-list" id="usersList">
+                    <!-- Список пользователей будет здесь -->
+                </div>
+
+                <div class="login-info">
+                    <p><strong>Ученики:</strong> Анна, Михаил, Екатерина, Дмитрий, София</p>
+                    <p><strong>Репетитор:</strong> Полный доступ ко всем функциям</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Основное приложение (скрыто до входа) -->
+    <div id="appContainer" class="app-container">
+        <!-- Шапка приложения -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1>🎓 EduPlatform</h1>
+                <div class="user-info" id="userInfo">
+                    <div class="user-avatar" id="userAvatar">👤</div>
+                    <span id="userName">Загрузка...</span>
+                    <button class="logout-btn" onclick="logout()">🚪</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Навигация -->
+        <nav class="app-nav">
+            <button class="nav-btn active" data-tab="dashboard">📊 Главная</button>
+            <button class="nav-btn" data-tab="progress">📈 Прогресс</button>
+            <button class="nav-btn" data-tab="homework">📚 Задания</button>
+            <button class="nav-btn" data-tab="schedule">📅 Расписание</button>
+            <button class="nav-btn" data-tab="chat">💬 Чат</button>
+        </nav>
+
+        <!-- Контент -->
+        <main class="app-main">
+            <!-- Дашборд -->
+            <div id="dashboard" class="tab-content active">
+                <div class="welcome-card">
+                    <h2>Добро пожаловать, <span id="welcomeName">ученик</span>! 👋</h2>
+                    <p>Ваша образовательная платформа готова к работе</p>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="currentProgress">0</span>
+                            <span class="stat-label">Текущий прогресс</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📚</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="homeworkCount">0</span>
+                            <span class="stat-label">Активные задания</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="nextLesson">-</span>
+                            <span class="stat-label">Следующее занятие</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <h3>Быстрые действия</h3>
+                    <div class="actions-grid" id="actionsGrid">
+                        <!-- Динамические кнопки в зависимости от роли -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Прогресс -->
+            <div id="progress" class="tab-content">
+                <div class="section-header">
+                    <h2>📈 Мой прогресс</h2>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-circle">
+                        <svg width="120" height="120" viewBox="0 0 120 120">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="#e0e0e0" stroke-width="8"/>
+                            <circle id="progressCircle" cx="60" cy="60" r="54" fill="none"
+                                    stroke="url(#gradient)" stroke-width="8" stroke-linecap="round"
+                                    transform="rotate(-90 60 60)" stroke-dasharray="339.292" stroke-dashoffset="339.292"/>
+                            <defs>
+                                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#667eea"/>
+                                    <stop offset="100%" stop-color="#764ba2"/>
+                                </linearGradient>
+                            </defs>
+                            <text x="60" y="65" text-anchor="middle" font-size="24" font-weight="bold" fill="#333">
+                                <tspan id="progressPercent">0</tspan>%
+                            </text>
+                        </svg>
+                    </div>
+                    <div class="progress-info">
+                        <h3 id="progressValue">0 из 100 баллов</h3>
+                        <p id="progressComment" class="progress-comment">Прогресс не оценен</p>
+                        <div class="progress-history" id="progressHistory">
+                            <!-- История прогресса будет здесь -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Задания -->
+            <div id="homework" class="tab-content">
+                <div class="section-header">
+                    <h2>📚 Домашние задания</h2>
+                </div>
+                <div class="homework-list" id="homeworkList">
+                    <!-- Список заданий будет здесь -->
+                </div>
+            </div>
+
+            <!-- Расписание -->
+            <div id="schedule" class="tab-content">
+                <div class="section-header">
+                    <h2>📅 Мое расписание</h2>
+                </div>
+                <div class="schedule-container">
+                    <div class="next-lesson-card" id="nextLessonCard">
+                        <!-- Ближайшее занятие -->
+                    </div>
+                    <div class="schedule-list" id="scheduleList">
+                        <!-- Список занятий -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Чат -->
+            <div id="chat" class="tab-content">
+                <div class="chat-header">
+                    <h2>💬 Чат с репетитором</h2>
+                </div>
+                <div class="messages-container" id="messagesContainer">
+                    <!-- Сообщения будут здесь -->
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" id="messageInput" placeholder="Введите сообщение..." maxlength="1000">
+                    <button onclick="sendMessage()">📤</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Модальное окно для смены фото -->
+    <div id="photoModal" class="modal">
+        <div class="modal-content">
+            <h3>🖼️ Смена фото профиля</h3>
+            <p>Для смены фото отправьте его боту в Telegram</p>
+            <button onclick="closeModal()" class="btn-primary">Понятно</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
